@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeuralSum — AI Text Summarizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset & Variables ──────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0a0a0f;
+    --surface:   #111118;
+    --border:    #1e1e2e;
+    --border-hi: #2e2e4e;
+    --accent:    #6ee7b7;   /* mint */
+    --accent2:   #a78bfa;   /* violet */
+    --accent3:   #fb923c;   /* amber */
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+    --danger:    #f87171;
+
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+    --radius:    12px;
+    --transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-head);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Noise overlay ──────────────────────────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  /* ── Glowing blobs ──────────────────────────────────────────────── */
+  .blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(100px);
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 12s ease-in-out infinite alternate;
+  }
+  .blob-1 { width: 500px; height: 500px; background: rgba(110,231,183,0.06); top: -150px; left: -100px; }
+  .blob-2 { width: 400px; height: 400px; background: rgba(167,139,250,0.07); bottom: -100px; right: -80px; animation-delay: -4s; }
+  .blob-3 { width: 300px; height: 300px; background: rgba(251,146,60,0.05); top: 40%; left: 60%; animation-delay: -8s; }
+  @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(30px,20px) scale(1.05); } }
+
+  /* ── Layout ─────────────────────────────────────────────────────── */
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 28px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+  .logo {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+  .logo span { color: var(--accent); }
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 12px;
+  }
+  .badge b { color: var(--accent2); }
+
+  /* ── Hero ────────────────────────────────────────────────────────── */
+  .hero { margin-bottom: 48px; }
+  .hero h1 {
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.04em;
+    margin-bottom: 14px;
+  }
+  .hero h1 em {
+    font-style: normal;
+    background: linear-gradient(120deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero p {
+    color: var(--muted);
+    font-size: 1.05rem;
+    font-weight: 400;
+    max-width: 560px;
+    line-height: 1.65;
+    font-family: var(--font-mono);
+  }
+
+  /* ── Main card ───────────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+    opacity: 0.4;
+  }
+
+  .label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .label::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 200px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    line-height: 1.7;
+    padding: 16px;
+    resize: vertical;
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  textarea:focus {
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 3px rgba(167,139,250,0.1);
+  }
+  textarea::placeholder { color: var(--muted); }
+
+  /* ── Controls row ────────────────────────────────────────────────── */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+    margin-top: 20px;
+  }
+
+  .ctrl-group { display: flex; flex-direction: column; gap: 6px; }
+  .ctrl-group .label { margin-bottom: 0; }
+
+  .pill-group {
+    display: flex;
+    gap: 6px;
+  }
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border-hi);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .pill:hover  { color: var(--text); border-color: var(--accent2); }
+  .pill.active {
+    background: var(--accent2);
+    border-color: var(--accent2);
+    color: #0a0a0f;
+    font-weight: 600;
+  }
+
+  select {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-hi);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    padding: 7px 12px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color var(--transition);
+  }
+  select:focus { border-color: var(--accent2); }
+
+  .btn-summarize {
+    margin-left: auto;
+    padding: 12px 32px;
+    background: var(--accent);
+    border: none;
+    border-radius: 999px;
+    color: #0a0a0f;
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 0.9rem;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    transition: all var(--transition);
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-summarize::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: white;
+    opacity: 0;
+    transition: opacity var(--transition);
+  }
+  .btn-summarize:hover::after { opacity: 0.1; }
+  .btn-summarize:active { transform: scale(0.97); }
+  .btn-summarize:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-summarize .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(0,0,0,0.3);
+    border-top-color: #000;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Word counter ────────────────────────────────────────────────── */
+  .word-count {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-align: right;
+    margin-top: 6px;
+  }
+
+  /* ── Output ──────────────────────────────────────────────────────── */
+  #output-card { display: none; }
+  #output-card.visible { display: block; animation: fadeUp 0.4s ease; }
+  @keyframes fadeUp { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: none; } }
+
+  .summary-text {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    line-height: 1.8;
+    color: var(--text);
+    background: rgba(110,231,183,0.03);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 16px 20px;
+    white-space: pre-wrap;
+  }
+
+  /* ── Stats row ───────────────────────────────────────────────────── */
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .stat-chip {
+    display: flex;
+    flex-direction: column;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    min-width: 110px;
+    flex: 1;
+  }
+  .stat-chip .s-val {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-chip .s-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+
+  /* copy btn */
+  .btn-copy {
+    float: right;
+    margin-top: -4px;
+    background: transparent;
+    border: 1px solid var(--border-hi);
+    border-radius: 8px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .btn-copy:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ── Error ───────────────────────────────────────────────────────── */
+  .error-msg {
+    color: var(--danger);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    margin-top: 12px;
+    display: none;
+  }
+
+  /* ── Model info bar ──────────────────────────────────────────────── */
+  .model-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 48px;
+    padding: 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.73rem;
+    color: var(--muted);
+  }
+  .model-bar strong { color: var(--text); }
+
+  /* ── Sample texts ────────────────────────────────────────────────── */
+  .samples-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  .sample-btn {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--accent2);
+    border: 1px solid rgba(167,139,250,0.25);
+    border-radius: 6px;
+    background: transparent;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .sample-btn:hover { background: rgba(167,139,250,0.08); border-color: var(--accent2); }
+</style>
+</head>
+<body>
+
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<div class="wrap">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">Neural<span>Sum</span></div>
+    <div class="badge">Fine-tuned <b>T5-small</b> · CNN/DailyMail</div>
+  </header>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>Summarize with<br><em>Fine-Tuned AI</em></h1>
+    <p>Transformer-based abstractive summarization — distilled from CNN/DailyMail, powered by fine-tuned T5.</p>
+  </div>
+
+  <!-- Input card -->
+  <div class="card">
+    <div class="label">Input Text</div>
+    <textarea id="input-text" placeholder="Paste any article, report, or long-form content here …"></textarea>
+    <div class="word-count"><span id="wc">0</span> words</div>
+
+    <div class="samples-row">
+      <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--muted);align-self:center;">Try sample →</span>
+      <button class="sample-btn" onclick="loadSample('news')">📰 News Article</button>
+      <button class="sample-btn" onclick="loadSample('science')">🔬 Science</button>
+      <button class="sample-btn" onclick="loadSample('tech')">💻 Tech</button>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl-group">
+        <div class="label">Summary Length</div>
+        <div class="pill-group">
+          <button class="pill" data-len="short">Short</button>
+          <button class="pill active" data-len="medium">Medium</button>
+          <button class="pill" data-len="long">Long</button>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <div class="label">Beam Search</div>
+        <select id="beams">
+          <option value="2">2 beams</option>
+          <option value="4" selected>4 beams</option>
+          <option value="6">6 beams</option>
+          <option value="8">8 beams</option>
+        </select>
+      </div>
+
+      <button class="btn-summarize" id="sumBtn" onclick="doSummarize()">
+        Summarize →
+      </button>
+    </div>
+
+    <div class="error-msg" id="err-msg"></div>
+  </div>
+
+  <!-- Output card -->
+  <div class="card" id="output-card">
+    <div class="label">
+      Summary
+      <button class="btn-copy" onclick="copySummary()">Copy</button>
+    </div>
+    <div class="summary-text" id="summary-out"></div>
+
+    <div class="stats">
+      <div class="stat-chip">
+        <div class="s-val" id="st-input">—</div>
+        <div class="s-label">Input Words</div>
+      </div>
+      <div class="stat-chip">
+        <div class="s-val" id="st-output">—</div>
+        <div class="s-label">Summary Words</div>
+      </div>
+      <div class="stat-chip">
+        <div class="s-val" id="st-compress">—</div>
+        <div class="s-label">Compression %</div>
+      </div>
+      <div class="stat-chip">
+        <div class="s-val" id="st-time">—</div>
+        <div class="s-label">Inference (s)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model info bar -->
+  <div class="model-bar">
+    <div>Model: <strong>{{ model_path }}</strong></div>
+    {% if meta %}
+    <div>Dataset: <strong>{{ meta.get('dataset', '—') }}</strong></div>
+    <div>Train samples: <strong>{{ meta.get('train_samples', '—') }}</strong></div>
+    <div>Epochs: <strong>{{ meta.get('epochs', '—') }}</strong></div>
+    {% endif %}
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+/* ── State ─────────────────────────────────────────────────────────── */
+let selectedLength = 'medium';
+
+/* ── Word counter ──────────────────────────────────────────────────── */
+const ta = document.getElementById('input-text');
+ta.addEventListener('input', () => {
+  const w = ta.value.trim().split(/\s+/).filter(Boolean).length;
+  document.getElementById('wc').textContent = w;
+});
+
+/* ── Length pills ──────────────────────────────────────────────────── */
+document.querySelectorAll('.pill[data-len]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pill[data-len]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedLength = btn.dataset.len;
+  });
+});
+
+/* ── Summarize ─────────────────────────────────────────────────────── */
+async function doSummarize() {
+  const text = ta.value.trim();
+  const err  = document.getElementById('err-msg');
+  err.style.display = 'none';
+
+  if (!text) {
+    err.textContent = 'Please enter some text first.';
+    err.style.display = 'block';
+    return;
+  }
+  if (text.split(/\s+/).length < 20) {
+    err.textContent = 'Please enter at least 20 words for a meaningful summary.';
+    err.style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('sumBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Summarizing…';
+
+  try {
+    const res = await fetch('/summarize_rag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        length: selectedLength,
+        beams: document.getElementById('beams').value,
+        no_repeat_ngram: 3,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Server error');
+
+    document.getElementById('summary-out').textContent = data.summary;
+    document.getElementById('st-input').textContent    = data.stats.input_words;
+    document.getElementById('st-output').textContent   = data.stats.summary_words;
+    document.getElementById('st-compress').textContent = data.stats.compression + '%';
+    document.getElementById('st-time').textContent     = data.stats.time_sec + 's';
+
+    const outCard = document.getElementById('output-card');
+    outCard.classList.add('visible');
+    outCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  } catch (e) {
+    err.textContent = '⚠ ' + e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Summarize →';
+  }
+}
+
+/* ── Copy ──────────────────────────────────────────────────────────── */
+function copySummary() {
+  const t = document.getElementById('summary-out').textContent;
+  navigator.clipboard.writeText(t).then(() => {
+    const b = document.querySelector('.btn-copy');
+    b.textContent = 'Copied!';
+    setTimeout(() => b.textContent = 'Copy', 1500);
+  });
+}
+
+/* ── Sample texts ──────────────────────────────────────────────────── */
+const SAMPLES = {
+  news: `The United Nations Climate Change Conference concluded in Dubai on Saturday after marathon negotiations that stretched two days beyond the scheduled end. Delegates from nearly 200 countries agreed to a landmark deal that for the first time explicitly calls on nations to transition away from fossil fuels. The agreement, known as the UAE Consensus, sets a goal of tripling global renewable energy capacity and doubling the rate of energy efficiency improvements by 2030. Climate advocates praised the historic language around fossil fuels, though many said the deal lacked the stronger mandatory phase-out language they had pushed for. The deal also significantly boosted a fund to help vulnerable nations cope with climate disasters, injecting roughly 800 million dollars into the so-called loss and damage fund. Oil-producing nations, led by Saudi Arabia, had resisted stronger language throughout the talks, while island states and least-developed countries pushed for the most ambitious outcome.`,
+
+  science: `Scientists at the European Space Agency have detected what they believe to be the largest known structure in the observable universe — a supercluster of galaxies stretching nearly 1.4 billion light-years across. The structure, tentatively named the Quipu Supercluster, was identified using data from the eROSITA X-ray telescope. Unlike the filaments and walls of the cosmic web that are common at these scales, Quipu appears to form a continuous, densely connected system of galaxy clusters bound together by gravity. Its sheer size challenges current cosmological models, which predict that structures above around one billion light-years should not remain gravitationally coherent. Researchers caution that further observations are needed to confirm whether Quipu is truly a single bound structure or a chance alignment of smaller features. If confirmed, it would exceed even the Hercules-Corona Borealis Great Wall as the largest known cosmic structure.`,
+
+  tech: `OpenAI announced a new reasoning model called o3 that significantly outperforms its predecessors on a variety of scientific and mathematical benchmarks. The company claims o3 achieved a score of 88 percent on the ARC-AGI benchmark, a test of novel problem solving designed to be resistant to memorization, compared to just 5 percent for GPT-4o. The model uses a technique called chain-of-thought reinforcement learning, in which the model is trained to spend time thinking through problems before producing a final answer. OpenAI says compute time during inference can be scaled up for harder problems, giving users some control over the trade-off between speed and accuracy. Researchers and observers noted that these results, while impressive, do not demonstrate general intelligence but rather show continued rapid progress on specific benchmarks. The model has not yet been released publicly, and safety evaluations are ongoing.`
+};
+
+function loadSample(key) {
+  ta.value = SAMPLES[key];
+  const w = ta.value.trim().split(/\s+/).filter(Boolean).length;
+  document.getElementById('wc').textContent = w;
+  ta.focus();
+}
+
+/* ── Keyboard shortcut ─────────────────────────────────────────────── */
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') doSummarize();
+});
+</script>
+</body>
+</html>
