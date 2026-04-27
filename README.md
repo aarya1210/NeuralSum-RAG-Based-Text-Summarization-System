@@ -143,4 +143,10 @@ POST /summarize_rag
 
 ---
 
+## 📚 References
+
+- T5 Model: https://huggingface.co/t5-small  
+- Transformers Library: https://github.com/huggingface/transformers  
+- Dataset: https://huggingface.co/datasets/abisee/cnn_dailymail 
+
 ## ⭐ If you found this useful, consider giving a star!
